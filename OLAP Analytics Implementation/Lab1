@@ -1,0 +1,303 @@
+OLAP Analytics Implementation with ClickHouse
+Prerequisites
+Basic understanding of SQL queries (SELECT, WHERE, GROUP BY, JOIN)
+Familiarity with Linux command line operations
+Understanding of database concepts (tables, columns, data types)
+Basic knowledge of analytical queries and aggregations
+Learning Objectives
+By completing this lab, you will:
+
+Install and configure ClickHouse on a Linux system
+Design and create OLAP-optimized tables in ClickHouse
+Implement analytical queries using ClickHouse's OLAP capabilities
+Understand the performance benefits of columnar storage for analytics
+Environment Setup
+You will use the Al Nafi provided Linux machine accessed via the "Start Lab" button. All installations will be performed during this lab.
+
+System Requirements:
+
+Ubuntu/Debian-based Linux system
+Minimum 2GB RAM
+Internet connectivity for package downloads
+Task 1: Install and Configure ClickHouse
+Step 1.1: Add ClickHouse Repository
+# Add the GPG key
+sudo apt-get install -y apt-transport-https ca-certificates dirmngr
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 8919F6BD2B48D754
+
+# Add repository
+echo "deb https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
+Step 1.2: Install ClickHouse Server and Client
+# Update package list
+sudo apt-get update
+
+# Install ClickHouse server and client
+sudo apt-get install -y clickhouse-server clickhouse-client
+
+# Start ClickHouse service
+sudo service clickhouse-server start
+
+# Verify service is running
+sudo service clickhouse-server status
+Step 1.3: Connect to ClickHouse
+# Connect to ClickHouse client
+clickhouse-client
+You should see the ClickHouse prompt: localhost :)
+
+Task 2: Create OLAP-Optimized Tables
+Step 2.1: Create Database
+In the ClickHouse client, create a database for analytics:
+
+-- Create analytics database
+CREATE DATABASE IF NOT EXISTS sales_analytics;
+
+-- Switch to the database
+USE sales_analytics;
+Step 2.2: Design Sales Fact Table
+Create a fact table optimized for OLAP queries. Note the MergeTree engine and ORDER BY clause:
+
+-- TODO: Complete the table creation with appropriate data types
+CREATE TABLE sales_fact
+(
+    sale_id UInt64,
+    sale_date Date,
+    product_id UInt32,
+    customer_id UInt32,
+    region String,
+    quantity UInt16,
+    unit_price Decimal(10, 2),
+    -- TODO: Add calculated column for total_amount (quantity * unit_price)
+    discount_percent UInt8,
+    -- TODO: Add column for final_amount after discount
+    payment_method String
+)
+ENGINE = MergeTree()
+-- TODO: Define ORDER BY clause for optimal query performance
+-- Hint: Consider which columns will be used most in WHERE and GROUP BY
+PRIMARY KEY (sale_date, region);
+Step 2.3: Create Dimension Tables
+-- Product dimension table
+CREATE TABLE products
+(
+    product_id UInt32,
+    product_name String,
+    category String,
+    subcategory String,
+    brand String
+)
+ENGINE = MergeTree()
+ORDER BY product_id;
+
+-- Customer dimension table
+-- TODO: Complete this table structure
+CREATE TABLE customers
+(
+    customer_id UInt32,
+    -- TODO: Add customer_name column
+    -- TODO: Add customer_segment column (e.g., 'Premium', 'Standard', 'Basic')
+    -- TODO: Add registration_date column
+    country String
+)
+ENGINE = MergeTree()
+-- TODO: Define appropriate ORDER BY clause
+Step 2.4: Load Sample Data
+Create a script to generate and load sample data:
+
+-- Insert sample products
+INSERT INTO products VALUES
+(1, 'Laptop Pro 15', 'Electronics', 'Computers', 'TechBrand'),
+(2, 'Wireless Mouse', 'Electronics', 'Accessories', 'TechBrand'),
+(3, 'Office Chair', 'Furniture', 'Seating', 'ComfortCo'),
+(4, 'Desk Lamp', 'Furniture', 'Lighting', 'BrightLight'),
+(5, 'USB-C Cable', 'Electronics', 'Accessories', 'TechBrand');
+
+-- TODO: Insert at least 5 customer records
+-- Example format:
+-- INSERT INTO customers VALUES (1, 'John Doe', 'Premium', '2023-01-15', 'USA');
+
+-- Insert sample sales data
+-- TODO: Complete this INSERT with calculated columns
+INSERT INTO sales_fact VALUES
+(1, '2024-01-15', 1, 1, 'North', 2, 1200.00, 5, 'Credit Card'),
+(2, '2024-01-16', 2, 2, 'South', 5, 25.00, 0, 'PayPal'),
+-- TODO: Add at least 10 more diverse sales records covering:
+-- - Different dates (spread across 2024)
+-- - Different regions (North, South, East, West)
+-- - Various products and customers
+-- - Different payment methods
+Task 3: Implement OLAP Analytical Queries
+Step 3.1: Basic Aggregation Queries
+Implement queries to analyze sales performance:
+
+-- Query 1: Total sales by region
+-- TODO: Write a query that calculates:
+-- - Total quantity sold
+-- - Total revenue (sum of final_amount)
+-- - Average order value
+-- Group by region and order by total revenue descending
+
+SELECT 
+    region,
+    -- TODO: Add aggregation functions
+FROM sales_fact
+-- TODO: Complete GROUP BY and ORDER BY clauses
+Step 3.2: Time-Series Analysis
+-- Query 2: Monthly sales trend
+-- TODO: Implement a query that shows:
+-- - Month and year from sale_date
+-- - Total sales amount per month
+-- - Number of transactions per month
+-- - Average transaction value per month
+-- Order by date
+
+SELECT 
+    toStartOfMonth(sale_date) AS month,
+    -- TODO: Add required aggregations
+FROM sales_fact
+-- TODO: Complete the query
+Step 3.3: Multi-Dimensional Analysis with JOINs
+-- Query 3: Sales by product category and region
+-- TODO: Write a query that joins sales_fact with products table
+-- Calculate:
+-- - Total revenue by category and region
+-- - Number of units sold
+-- - Average discount percentage applied
+-- Include only categories with revenue > 1000
+
+SELECT 
+    p.category,
+    s.region,
+    -- TODO: Add aggregation columns
+FROM sales_fact s
+-- TODO: Add JOIN clause with products table
+-- TODO: Add WHERE, GROUP BY, and HAVING clauses
+Step 3.4: Advanced OLAP Operations
+Implement a query using ClickHouse's window functions:
+
+-- Query 4: Running total and ranking
+-- TODO: Create a query that shows:
+-- - Daily sales with running total for each region
+-- - Rank of each day's sales within its region
+-- Use window functions: sum() OVER and rank() OVER
+
+SELECT 
+    sale_date,
+    region,
+    sum(final_amount) as daily_sales,
+    -- TODO: Add window function for running total
+    -- TODO: Add window function for ranking
+FROM sales_fact
+-- TODO: Complete GROUP BY and ORDER BY
+Step 3.5: Materialized View for Performance
+Create a materialized view for frequently accessed aggregations:
+
+-- TODO: Create a materialized view named 'daily_sales_summary'
+-- That automatically maintains:
+-- - sale_date
+-- - region
+-- - total_sales (sum of final_amount)
+-- - transaction_count
+-- - avg_transaction_value
+
+CREATE MATERIALIZED VIEW daily_sales_summary
+ENGINE = SummingMergeTree()
+ORDER BY (sale_date, region)
+AS SELECT 
+    sale_date,
+    region,
+    -- TODO: Add aggregation columns with appropriate functions
+FROM sales_fact
+-- TODO: Add GROUP BY clause
+Query the materialized view:
+
+-- TODO: Write a query to retrieve data from the materialized view
+-- Show all regions' performance for the last 30 days
+Verification
+Verify Installation
+# Check ClickHouse version
+clickhouse-client --query "SELECT version()"
+
+# Check running processes
+ps aux | grep clickhouse
+Verify Table Creation
+-- List all tables
+SHOW TABLES FROM sales_analytics;
+
+-- Check table structure
+DESCRIBE TABLE sales_fact;
+
+-- Verify row counts
+SELECT count() FROM sales_fact;
+SELECT count() FROM products;
+SELECT count() FROM customers;
+Verify Query Performance
+-- Check query execution time and rows processed
+SELECT 
+    region,
+    sum(final_amount) as total_revenue
+FROM sales_fact
+GROUP BY region
+FORMAT Vertical;
+
+-- View query statistics
+SELECT 
+    query,
+    query_duration_ms,
+    read_rows,
+    read_bytes
+FROM system.query_log
+WHERE type = 'QueryFinish'
+ORDER BY event_time DESC
+LIMIT 5;
+Expected Outcomes
+ClickHouse server running and accessible
+Database with 3+ tables created successfully
+Sample data loaded (minimum 15 sales records)
+All analytical queries returning results within milliseconds
+Materialized view automatically updating with new data
+Troubleshooting Tips
+Service won't start:
+
+# Check logs
+sudo tail -f /var/log/clickhouse-server/clickhouse-server.log
+
+# Check port availability
+sudo netstat -tlnp | grep 9000
+Connection refused:
+
+# Verify service status
+sudo service clickhouse-server status
+
+# Restart if needed
+sudo service clickhouse-server restart
+Query errors:
+
+Verify table names and column names match exactly (case-sensitive)
+Check data types in INSERT statements
+Ensure all required columns are included
+Performance issues:
+
+Verify ORDER BY clause matches query patterns
+Check if indexes are being used: EXPLAIN SELECT ...
+Consider using PREWHERE for filtering before aggregation
+Conclusion
+You have successfully:
+
+Installed and configured ClickHouse OLAP database
+Created optimized fact and dimension tables using MergeTree engine
+Loaded sample data representing a sales analytics scenario
+Implemented various OLAP queries including aggregations, time-series analysis, and multi-dimensional analysis
+Created materialized views for query performance optimization
+Key Takeaways:
+
+ClickHouse's columnar storage provides significant performance advantages for analytical queries
+Proper table design (ORDER BY, PRIMARY KEY) is crucial for query performance
+Materialized views can dramatically improve frequently-run query performance
+OLAP operations like window functions enable sophisticated analytical insights
+Next Steps:
+
+Experiment with larger datasets to observe performance scaling
+Explore ClickHouse's distributed table capabilities
+Investigate additional aggregation functions and statistical operations
+Practice optimizing queries using EXPLAIN and query profiling
+This lab provided hands-on experience with modern OLAP technology used by companies like Uber, Cloudflare, and Bloomberg for real-time analytics at scale.
