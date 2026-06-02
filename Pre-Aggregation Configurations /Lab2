@@ -1,0 +1,364 @@
+Pre-Aggregation Configurations
+Prerequisites
+Basic SQL knowledge (SELECT, JOIN, WHERE clauses)
+Understanding of database concepts (tables, indexes)
+Familiarity with Linux command line
+PostgreSQL basics (connecting, running queries)
+Learning Objectives
+By completing this lab, you will:
+
+Understand materialized views and their benefits
+Configure materialized views for query optimization
+Measure and compare query performance with and without pre-aggregation
+Implement refresh strategies for materialized views
+Environment Setup
+Install PostgreSQL
+# Update package list
+sudo apt update
+
+# Install PostgreSQL
+sudo apt install -y postgresql postgresql-contrib
+
+# Start PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Switch to postgres user
+sudo -i -u postgres
+Create Lab Database
+# Create database
+createdb sales_analytics
+
+# Connect to database
+psql sales_analytics
+Task 1: Create Sample Dataset and Baseline Queries
+Step 1: Create Base Tables
+Execute the following SQL to create sample tables:
+
+-- Create products table
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_name VARCHAR(100),
+    category VARCHAR(50),
+    price DECIMAL(10,2)
+);
+
+-- Create sales table
+CREATE TABLE sales (
+    sale_id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES products(product_id),
+    sale_date DATE,
+    quantity INTEGER,
+    region VARCHAR(50)
+);
+
+-- Create indexes for better performance
+CREATE INDEX idx_sales_date ON sales(sale_date);
+CREATE INDEX idx_sales_product ON sales(product_id);
+CREATE INDEX idx_sales_region ON sales(region);
+Step 2: Generate Sample Data
+-- Insert sample products
+INSERT INTO products (product_name, category, price)
+SELECT 
+    'Product ' || i,
+    CASE (i % 5)
+        WHEN 0 THEN 'Electronics'
+        WHEN 1 THEN 'Clothing'
+        WHEN 2 THEN 'Food'
+        WHEN 3 THEN 'Books'
+        ELSE 'Home'
+    END,
+    (RANDOM() * 1000 + 10)::DECIMAL(10,2)
+FROM generate_series(1, 1000) AS i;
+
+-- Insert sample sales (100,000 records)
+INSERT INTO sales (product_id, sale_date, quantity, region)
+SELECT 
+    (RANDOM() * 999 + 1)::INTEGER,
+    CURRENT_DATE - (RANDOM() * 730)::INTEGER,
+    (RANDOM() * 20 + 1)::INTEGER,
+    CASE (RANDOM() * 4)::INTEGER
+        WHEN 0 THEN 'North'
+        WHEN 1 THEN 'South'
+        WHEN 2 THEN 'East'
+        ELSE 'West'
+    END
+FROM generate_series(1, 100000);
+Step 3: Create Complex Aggregation Query
+-- Enable timing to measure query performance
+\timing on
+
+-- Complex aggregation query (baseline)
+SELECT 
+    p.category,
+    s.region,
+    DATE_TRUNC('month', s.sale_date) AS month,
+    COUNT(*) AS total_sales,
+    SUM(s.quantity) AS total_quantity,
+    SUM(s.quantity * p.price) AS total_revenue,
+    AVG(s.quantity * p.price) AS avg_sale_value
+FROM sales s
+JOIN products p ON s.product_id = p.product_id
+WHERE s.sale_date >= CURRENT_DATE - INTERVAL '12 months'
+GROUP BY p.category, s.region, DATE_TRUNC('month', s.sale_date)
+ORDER BY month DESC, total_revenue DESC;
+Record the execution time - you'll compare this later.
+
+Task 2: Configure Materialized Views
+Step 1: Create Basic Materialized View
+-- Create materialized view for monthly sales summary
+CREATE MATERIALIZED VIEW mv_monthly_sales_summary AS
+SELECT 
+    p.category,
+    s.region,
+    DATE_TRUNC('month', s.sale_date) AS month,
+    COUNT(*) AS total_sales,
+    SUM(s.quantity) AS total_quantity,
+    SUM(s.quantity * p.price) AS total_revenue,
+    AVG(s.quantity * p.price) AS avg_sale_value
+FROM sales s
+JOIN products p ON s.product_id = p.product_id
+GROUP BY p.category, s.region, DATE_TRUNC('month', s.sale_date);
+
+-- Create index on materialized view
+CREATE INDEX idx_mv_month ON mv_monthly_sales_summary(month);
+CREATE INDEX idx_mv_category ON mv_monthly_sales_summary(category);
+CREATE INDEX idx_mv_region ON mv_monthly_sales_summary(region);
+Step 2: Create Advanced Materialized View with Filters
+-- TODO: Create a materialized view for recent sales (last 12 months)
+-- Name: mv_recent_sales_summary
+-- Include: category, region, month, total_sales, total_quantity, total_revenue, avg_sale_value
+-- Filter: Only include sales from the last 12 months
+-- Hint: Use WHERE clause with date comparison
+
+CREATE MATERIALIZED VIEW mv_recent_sales_summary AS
+-- Your implementation here
+;
+
+-- TODO: Add appropriate indexes to optimize queries
+-- Consider which columns will be used in WHERE and ORDER BY clauses
+Step 3: Create Product Performance View
+-- TODO: Create materialized view for product performance metrics
+-- Name: mv_product_performance
+-- Requirements:
+--   - Include product_id, product_name, category
+--   - Calculate total_sales_count, total_quantity_sold, total_revenue
+--   - Calculate avg_quantity_per_sale, avg_revenue_per_sale
+--   - Add indexes on product_id and category
+
+CREATE MATERIALIZED VIEW mv_product_performance AS
+-- Your implementation here
+;
+Task 3: Test Aggregation Speed
+Step 1: Compare Query Performance
+-- Test 1: Query using base tables
+\timing on
+EXPLAIN ANALYZE
+SELECT 
+    category,
+    region,
+    month,
+    total_revenue
+FROM (
+    SELECT 
+        p.category,
+        s.region,
+        DATE_TRUNC('month', s.sale_date) AS month,
+        SUM(s.quantity * p.price) AS total_revenue
+    FROM sales s
+    JOIN products p ON s.product_id = p.product_id
+    WHERE s.sale_date >= CURRENT_DATE - INTERVAL '12 months'
+    GROUP BY p.category, s.region, DATE_TRUNC('month', s.sale_date)
+) subquery
+WHERE total_revenue > 10000
+ORDER BY total_revenue DESC
+LIMIT 20;
+
+-- Test 2: Query using materialized view
+EXPLAIN ANALYZE
+SELECT 
+    category,
+    region,
+    month,
+    total_revenue
+FROM mv_monthly_sales_summary
+WHERE month >= CURRENT_DATE - INTERVAL '12 months'
+  AND total_revenue > 10000
+ORDER BY total_revenue DESC
+LIMIT 20;
+Record both execution times and compare.
+
+Step 2: Implement Performance Testing Function
+-- TODO: Create a function to test query performance
+-- Name: test_query_performance
+-- Parameters: query_text TEXT, test_name TEXT
+-- Returns: execution time in milliseconds
+-- Hint: Use EXPLAIN ANALYZE and extract execution time
+
+CREATE OR REPLACE FUNCTION test_query_performance(
+    query_text TEXT,
+    test_name TEXT
+) RETURNS TABLE(test_name TEXT, execution_time_ms NUMERIC) AS $$
+DECLARE
+    -- Your variable declarations here
+BEGIN
+    -- Your implementation here
+    -- Execute the query and capture timing
+    -- Return the results
+END;
+$$ LANGUAGE plpgsql;
+Step 3: Run Comparative Tests
+-- Test different query patterns
+SELECT * FROM test_query_performance(
+    'SELECT category, SUM(total_revenue) FROM mv_monthly_sales_summary GROUP BY category',
+    'MV Aggregation'
+);
+
+-- TODO: Create and run similar test for base table query
+-- Compare the results
+Task 4: Configure Refresh Strategies
+Step 1: Manual Refresh
+-- Refresh materialized view
+REFRESH MATERIALIZED VIEW mv_monthly_sales_summary;
+
+-- Concurrent refresh (allows queries during refresh)
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_monthly_sales_summary;
+Step 2: Create Refresh Function
+-- TODO: Create a function to refresh all materialized views
+-- Name: refresh_all_sales_views
+-- Should refresh: mv_monthly_sales_summary, mv_recent_sales_summary, mv_product_performance
+-- Use CONCURRENTLY option for non-blocking refresh
+-- Return: success message with timestamp
+
+CREATE OR REPLACE FUNCTION refresh_all_sales_views() 
+RETURNS TEXT AS $$
+-- Your implementation here
+$$ LANGUAGE plpgsql;
+Step 3: Schedule Automatic Refresh (Using pg_cron)
+-- Install pg_cron extension
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- TODO: Schedule daily refresh at 2 AM
+-- Use pg_cron to call refresh_all_sales_views()
+-- Hint: Use cron.schedule function with appropriate cron expression
+
+SELECT cron.schedule(
+    -- Your implementation here
+);
+
+-- View scheduled jobs
+SELECT * FROM cron.job;
+Verification
+Verify Materialized Views
+-- List all materialized views
+SELECT schemaname, matviewname, hasindexes 
+FROM pg_matviews 
+WHERE schemaname = 'public';
+
+-- Check materialized view size
+SELECT 
+    schemaname,
+    matviewname,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||matviewname)) AS size
+FROM pg_matviews
+WHERE schemaname = 'public';
+
+-- Verify data in materialized views
+SELECT COUNT(*) FROM mv_monthly_sales_summary;
+SELECT COUNT(*) FROM mv_recent_sales_summary;
+SELECT COUNT(*) FROM mv_product_performance;
+Performance Comparison Report
+-- TODO: Create a view that shows performance metrics
+-- Name: v_performance_comparison
+-- Compare execution times between base tables and materialized views
+-- Include: query_type, avg_execution_time, improvement_percentage
+
+CREATE VIEW v_performance_comparison AS
+-- Your implementation here
+;
+Test Refresh Functionality
+-- Insert new sales data
+INSERT INTO sales (product_id, sale_date, quantity, region)
+VALUES (1, CURRENT_DATE, 5, 'North');
+
+-- Query materialized view (should not show new data)
+SELECT * FROM mv_monthly_sales_summary 
+WHERE month = DATE_TRUNC('month', CURRENT_DATE);
+
+-- Refresh and query again
+REFRESH MATERIALIZED VIEW mv_monthly_sales_summary;
+
+SELECT * FROM mv_monthly_sales_summary 
+WHERE month = DATE_TRUNC('month', CURRENT_DATE);
+Expected Outcomes
+After completing this lab, you should observe:
+
+Performance Improvement: Materialized view queries should be 5-10x faster than base table queries
+Storage Trade-off: Materialized views consume additional disk space
+Data Freshness: Understanding the balance between query speed and data currency
+Refresh Impact: Concurrent refresh allows queries during updates
+Performance Benchmarks
+Typical results on standard hardware:
+
+Base table aggregation: 200-500ms
+Materialized view query: 20-50ms
+Refresh time: 1-3 seconds (depending on data volume)
+Troubleshooting
+Common Issues
+Issue: Cannot create concurrent refresh
+
+-- Solution: Ensure unique index exists
+CREATE UNIQUE INDEX idx_mv_unique ON mv_monthly_sales_summary(category, region, month);
+Issue: Materialized view not updating
+
+-- Check last refresh time
+SELECT schemaname, matviewname, last_refresh 
+FROM pg_stat_user_tables 
+WHERE relname LIKE 'mv_%';
+Issue: pg_cron extension not available
+
+# Install from command line
+sudo apt install postgresql-contrib
+# Then in psql:
+# CREATE EXTENSION pg_cron;
+Issue: Slow refresh performance
+
+-- Use CONCURRENTLY only when needed
+-- For large updates, regular refresh is faster
+REFRESH MATERIALIZED VIEW mv_monthly_sales_summary;
+Conclusion
+In this lab, you configured materialized views to optimize query performance through pre-aggregation. You learned to:
+
+Create materialized views for complex aggregations
+Measure and compare query performance improvements
+Implement refresh strategies (manual, scheduled, concurrent)
+Balance between query speed and data freshness
+Key Takeaways:
+
+Materialized views significantly improve read performance for complex aggregations
+Regular refresh is necessary to maintain data accuracy
+Concurrent refresh enables non-blocking updates
+Proper indexing on materialized views is crucial for optimal performance
+Next Steps:
+
+Explore incremental materialized view refresh strategies
+Implement monitoring for materialized view staleness
+Consider partitioning strategies for large materialized views
+Investigate query rewriting to automatically use materialized views
+Cleanup (Optional)
+-- Drop materialized views
+DROP MATERIALIZED VIEW IF EXISTS mv_monthly_sales_summary CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_recent_sales_summary CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS mv_product_performance CASCADE;
+
+-- Drop tables
+DROP TABLE IF EXISTS sales CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+
+-- Exit psql
+\q
+# Exit postgres user
+exit
+
+# Stop PostgreSQL (if needed)
+sudo systemctl stop postgresql
